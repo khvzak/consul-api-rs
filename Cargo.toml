@@ -1,0 +1,15 @@
+[package]
+name = "consul-api"
+version = "0.1.0"
+authors = ["Aleksandr Orlenko <zxteam@gmail.com>"]
+description = "Wrapper for Consul API v1"
+license = "MIT/Apache-2.0"
+repository = "https://github.com/khvzak/consul-api-rs"
+keywords = ["consul", "api"]
+categories = ["api-bindings"]
+
+[dependencies]
+hyper = "0.10"
+serde = "0.9"
+serde_json = "0.9"
+base64 = "0.3"
