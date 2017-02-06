@@ -1,6 +1,7 @@
 extern crate hyper;
 extern crate serde;
 extern crate serde_json;
+#[macro_use] extern crate serde_derive;
 extern crate base64;
 
 pub mod agent;
@@ -11,6 +12,10 @@ pub use agent::Agent;
 pub use keyvalue::KeyValue;
 
 pub use error::Result;
+
+use hyper::Url;
+use hyper::client::RequestBuilder;
+use hyper::method::Method;
 
 pub struct Consul {
     address: String,
@@ -32,6 +37,23 @@ impl Consul {
 
     pub fn kv(&self) -> KeyValue {
         KeyValue::new(self)
+    }
+
+    pub fn _request(&self, method: Method, srv: &str) -> RequestBuilder {
+        self._request3(method, srv, (None as Option<&str>).into_iter(), |_| ())
+    }
+
+    pub fn _request2<I>(&self, method: Method, srv: &str, segments: I) -> RequestBuilder where I: IntoIterator, I::Item: AsRef<str> {
+        self._request3(method, srv, segments, |_| ())
+    }
+
+    pub fn _request3<I, F>(&self, method: Method, srv: &str, segments: I, url_f: F) -> RequestBuilder
+        where I: IntoIterator, I::Item: AsRef<str>, F: Fn(&mut Url) -> () {
+        let mut url = Url::parse(&format!("http://{}/v1/{}", self.address, srv)).unwrap();
+        url.path_segments_mut().unwrap().extend(segments);
+        url_f(&mut url);
+
+        self.client.request(method, url)
     }
 }
 
