@@ -2,7 +2,7 @@ use hyper;
 use hyper::method::Method::{Get, Put};
 use hyper::header::ContentType;
 
-use serde_json::{self, Value as JValue, Map as JMap};
+use serde_json::{self, Value as JValue};
 
 use Consul;
 use error::consul_error;
@@ -10,321 +10,115 @@ use error::consul_error;
 use std::io::Read;
 use std::collections::HashMap;
 
+// AgentCheck represents a check known to the agent
+#[derive(Deserialize, Debug, Clone)]
+pub struct AgentCheck {
+    #[serde(rename = "Node")]
+    pub node: String,
+    #[serde(rename = "CheckID")]
+    pub check_id: String,
+    #[serde(rename = "Name")]
+    pub name: String,
+    #[serde(rename = "Status")]
+    pub status: String,
+    #[serde(rename = "Notes")]
+    pub notes: String,
+    #[serde(rename = "Output")]
+    pub output: String,
+    #[serde(rename = "ServiceID")]
+    pub service_id: String,
+    #[serde(rename = "ServiceName")]
+    pub service_name: String,
+}
+
+// AgentService represents a service known to the agent
+#[derive(Deserialize, Debug, Clone)]
+pub struct AgentService {
+    #[serde(rename = "ID")]
+    pub id: String,
+    #[serde(rename = "Service")]
+    pub service: String,
+    #[serde(rename = "Tags")]
+    pub tags: Vec<String>,
+    #[serde(rename = "Port")]
+    pub port: u32,
+    #[serde(rename = "Address")]
+    pub address: String,
+    #[serde(rename = "EnableTagOverride")]
+    pub enable_tag_override: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[serde(deny_unknown_fields)]
+pub struct AgentCheckRegistration {
+    #[serde(rename = "ID", skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(rename = "Name")]
+    pub name: Option<String>,
+    #[serde(rename = "ServiceID", skip_serializing_if = "Option::is_none")]
+    pub service_id: Option<String>,
+
+    #[serde(rename = "Script", skip_serializing_if = "Option::is_none")]
+    pub script: Option<String>,
+    #[serde(rename = "DockerContainerID", skip_serializing_if = "Option::is_none")]
+    pub docker_container_id: Option<String>,
+    #[serde(rename = "Shell", skip_serializing_if = "Option::is_none")]
+    pub shell: Option<String>,
+    #[serde(rename = "Interval", skip_serializing_if = "Option::is_none")]
+    pub interval: Option<String>,
+    #[serde(rename = "Timeout", skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<String>,
+    #[serde(rename = "TTL", skip_serializing_if = "Option::is_none")]
+    pub ttl: Option<String>,
+    #[serde(rename = "HTTP", skip_serializing_if = "Option::is_none")]
+    pub http: Option<String>,
+    #[serde(rename = "TCP", skip_serializing_if = "Option::is_none")]
+    pub tcp: Option<String>,
+    #[serde(rename = "Status", skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(rename = "Notes", skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+    #[serde(rename = "TLSSkipVerify", skip_serializing_if = "Option::is_none")]
+    pub tls_skip_verify: Option<bool>,
+    #[serde(rename = "DeregisterCriticalServiceAfter", skip_serializing_if = "Option::is_none")]
+    pub deregister_critical_service_after: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[serde(deny_unknown_fields)]
+pub struct AgentServiceRegistration {
+    #[serde(rename = "ID", skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(rename = "Name")]
+    pub name: String,
+
+    #[serde(rename = "Tags", skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
+    #[serde(rename = "Port", skip_serializing_if = "Option::is_none")]
+    pub port: Option<u32>,
+    #[serde(rename = "Address", skip_serializing_if = "Option::is_none")]
+    pub address: Option<String>,
+    #[serde(rename = "EnableTagOverride", skip_serializing_if = "Option::is_none")]
+    pub enable_tag_override: Option<bool>,
+    #[serde(rename = "Check", skip_serializing_if = "Option::is_none")]
+    pub check: Option<AgentCheckRegistration>,
+}
+
+impl From<JValue> for AgentCheckRegistration {
+    fn from(x: JValue) -> Self {
+        serde_json::from_value(x).unwrap()
+    }
+}
+
+impl From<JValue> for AgentServiceRegistration {
+    fn from(x: JValue) -> Self {
+        serde_json::from_value(x).unwrap()
+    }
+}
+
 pub struct Agent<'a> {
     consul: &'a Consul
 }
-
-pub trait HasJValue {
-    fn _jv(&self) -> &JValue;
-    fn _jv_mut(&mut self) -> &mut JValue;
-}
-
-// AgentCheckTrait represents a check known to the agent
-pub trait AgentCheckTrait : HasJValue {
-    fn node(&self)          -> &str { self._jv().get("Node").and_then(|x| x.as_str()).unwrap() }
-    fn check_id(&self)      -> &str { self._jv().get("CheckID").and_then(|x| x.as_str()).unwrap() }
-    fn name(&self)          -> &str { self._jv().get("Name").and_then(|x| x.as_str()).unwrap() }
-    fn status(&self)        -> &str { self._jv().get("Status").and_then(|x| x.as_str()).unwrap() }
-    fn notes(&self)         -> &str { self._jv().get("Notes").and_then(|x| x.as_str()).unwrap() }
-    fn output(&self)        -> &str { self._jv().get("Output").and_then(|x| x.as_str()).unwrap() }
-    fn service_id(&self)    -> &str { self._jv().get("ServiceID").and_then(|x| x.as_str()).unwrap() }
-    fn service_name(&self)  -> &str { self._jv().get("ServiceName").and_then(|x| x.as_str()).unwrap() }
-}
-
-pub trait AgentCheckRegistrationTrait : AgentServiceCheckTrait {
-    fn id(&self) -> Option<&str> {
-        self._jv().get("ID").and_then(|x| x.as_str())
-    }
-
-    fn set_id<S: Into<String>>(&mut self, val: S) -> &mut Self {
-        self._jv_mut().as_object_mut().unwrap().insert("ID".into(), JValue::String(val.into()));
-        self
-    }
-
-    fn name(&self) -> Option<&str> {
-        self._jv().get("Name").and_then(|x| x.as_str())
-    }
-
-    fn set_name<S: Into<String>>(&mut self, val: S) -> &mut Self {
-        self._jv_mut().as_object_mut().unwrap().insert("Name".into(), JValue::String(val.into()));
-        self
-    }
-
-    fn notes(&self) -> Option<&str> {
-        self._jv().get("Notes").and_then(|x| x.as_str())
-    }
-
-    fn set_notes<S: Into<String>>(&mut self, val: S) -> &mut Self {
-        self._jv_mut().as_object_mut().unwrap().insert("Notes".into(), JValue::String(val.into()));
-        self
-    }
-
-    fn service_id(&self) -> Option<&str> {
-        self._jv().get("ServiceID").and_then(|x| x.as_str())
-    }
-
-    fn set_service_id<S: Into<String>>(&mut self, val: S) -> &mut Self {
-        self._jv_mut().as_object_mut().unwrap().insert("ServiceID".into(), JValue::String(val.into()));
-        self
-    }
-}
-
-// AgentServiceTrait represents a service known to the agent
-pub trait AgentServiceTrait : HasJValue {
-    fn id(&self)                    -> &str { self._jv().get("ID").and_then(|x| x.as_str()).unwrap() }
-    fn service(&self)               -> &str { self._jv().get("Service").and_then(|x| x.as_str()).unwrap() }
-    fn tags(&self)                  -> Vec<&str> {
-        self._jv().get("Tags")
-            .and_then(|x| x.as_array())
-            .map(|vec| vec.into_iter().map(|x| x.as_str().unwrap()).collect::<Vec<_>>())
-            .unwrap()
-    }
-    fn port(&self)                  -> u32 { self._jv().get("CheckID").and_then(|x| x.as_u64()).map(|x| x as u32).unwrap() }
-    fn address(&self)               -> &str { self._jv().get("Address").and_then(|x| x.as_str()).unwrap() }
-    fn enable_tag_override(&self)   -> bool { self._jv().get("EnableTagOverride").and_then(|x| x.as_bool()).unwrap() }
-}
-
-// AgentServiceRegistrationTrait is used to register a new service
-pub trait AgentServiceRegistrationTrait : HasJValue {
-    fn id(&self) -> Option<&str> {
-        self._jv().get("ID").and_then(|x| x.as_str())
-    }
-
-    fn set_id<S: Into<String>>(&mut self, val: S) -> &mut Self {
-        self._jv_mut().as_object_mut().unwrap().insert("ID".into(), JValue::String(val.into()));
-        self
-    }
-
-    fn name(&self) -> Option<&str> {
-        self._jv().get("Name").and_then(|x| x.as_str())
-
-    }
-
-    fn set_name<S: Into<String>>(&mut self, val: S) -> &mut Self {
-        self._jv_mut().as_object_mut().unwrap().insert("Name".into(), JValue::String(val.into()));
-        self
-    }
-
-    fn tags(&self) -> Option<Vec<&str>> {
-        self._jv().get("Tags")
-            .and_then(|x| x.as_array())
-            .map(|vec| vec.into_iter().map(|x| x.as_str().unwrap()).collect::<Vec<_>>())
-    }
-
-    fn set_tags(&mut self, val: &[&str]) -> &mut Self {
-        self._jv_mut().as_object_mut().unwrap().insert(
-            "Tags".into(),
-            JValue::Array( val.iter().map(|&x| JValue::String(x.into())).collect() )
-        );
-        self
-    }
-
-    fn port(&self) -> Option<u32> {
-        self._jv().get("Port").and_then(|x| x.as_u64()).map(|x| x as u32)
-    }
-
-    fn set_port(&mut self, val: u32) -> &mut Self {
-        self._jv_mut().as_object_mut().unwrap().insert("Port".into(), val.into());
-        self
-    }
-
-    fn address(&self) -> Option<&str> {
-        self._jv().get("Address").and_then(|x| x.as_str())
-
-    }
-
-    fn set_address<S: Into<String>>(&mut self, val: S) -> &mut Self {
-        self._jv_mut().as_object_mut().unwrap().insert("Address".into(), JValue::String(val.into()));
-        self
-    }
-
-    fn enable_tag_override(&self) -> Option<bool> {
-        self._jv().get("EnableTagOverride").and_then(|x| x.as_bool())
-    }
-
-    fn set_enable_tag_override(&mut self, val: bool) -> &mut Self {
-        self._jv_mut().as_object_mut().unwrap().insert("EnableTagOverride".into(), JValue::Bool(val));
-        self
-    }
-
-    fn check(&self) -> Option<AgentServiceCheck> {
-        self._jv().get("Check").map(|x| AgentServiceCheck(x.clone()))
-    }
-
-    fn set_check(&mut self, val: AgentServiceCheck) -> &mut Self {
-        self._jv_mut().as_object_mut().unwrap().insert("Check".into(), val.0);
-        self
-    }
-}
-
-pub trait AgentServiceCheckTrait : HasJValue {
-    fn script(&self)  -> Option<&str> {
-        self._jv().get("Script").and_then(|x| x.as_str())
-    }
-
-    fn set_script<S: Into<String>>(&mut self, val: S) -> &mut Self {
-        self._jv_mut().as_object_mut().unwrap().insert("Script".into(), JValue::String(val.into()));
-        self
-    }
-
-    fn docker_container_id(&self) -> Option<&str> {
-        self._jv().get("DockerContainerID").and_then(|x| x.as_str())
-    }
-
-    fn set_docker_container_id<S: Into<String>>(&mut self, val: S) -> &mut Self {
-        self._jv_mut().as_object_mut().unwrap().insert("DockerContainerID".into(), JValue::String(val.into()));
-        self
-    }
-
-    fn shell(&self) -> Option<&str> {
-        self._jv().get("Shell").and_then(|x| x.as_str())
-    }
-
-    fn set_shell<S: Into<String>>(&mut self, val: S) -> &mut Self {
-        self._jv_mut().as_object_mut().unwrap().insert("Shell".into(), JValue::String(val.into()));
-        self
-    }
-
-    fn interval(&self) -> Option<&str> {
-        self._jv().get("Interval").and_then(|x| x.as_str())
-    }
-
-    fn set_interval<S: Into<String>>(&mut self, val: S) -> &mut Self {
-        self._jv_mut().as_object_mut().unwrap().insert("Interval".into(), JValue::String(val.into()));
-        self
-    }
-
-    fn timeout(&self) -> Option<&str> {
-        self._jv().get("Timeout").and_then(|x| x.as_str())
-    }
-
-    fn set_timeout<S: Into<String>>(&mut self, val: S) -> &mut Self {
-        self._jv_mut().as_object_mut().unwrap().insert("Timeout".into(), JValue::String(val.into()));
-        self
-    }
-
-    fn ttl(&self) -> Option<&str> {
-        self._jv().get("TTL").and_then(|x| x.as_str())
-    }
-
-    fn set_ttl<S: Into<String>>(&mut self, val: S) -> &mut Self {
-        self._jv_mut().as_object_mut().unwrap().insert("TTL".into(), JValue::String(val.into()));
-        self
-    }
-
-    fn http(&self) -> Option<&str> {
-        self._jv().get("HTTP").and_then(|x| x.as_str())
-    }
-
-    fn set_http<S: Into<String>>(&mut self, val: S) -> &mut Self {
-        self._jv_mut().as_object_mut().unwrap().insert("HTTP".into(), JValue::String(val.into()));
-        self
-    }
-
-    fn tcp(&self) -> Option<&str> {
-        self._jv().get("TCP").and_then(|x| x.as_str())
-    }
-
-    fn set_tcp<S: Into<String>>(&mut self, val: S) -> &mut Self {
-        self._jv_mut().as_object_mut().unwrap().insert("TCP".into(), JValue::String(val.into()));
-        self
-    }
-
-    fn status(&self) -> Option<&str> {
-        self._jv().get("Status").and_then(|x| x.as_str())
-    }
-
-    fn set_status<S: Into<String>>(&mut self, val: S) -> &mut Self {
-        self._jv_mut().as_object_mut().unwrap().insert("Status".into(), JValue::String(val.into()));
-        self
-    }
-
-    fn notes(&self) -> Option<&str> {
-        self._jv().get("Notes").and_then(|x| x.as_str())
-    }
-
-    fn set_notes<S: Into<String>>(&mut self, val: S) -> &mut Self {
-        self._jv_mut().as_object_mut().unwrap().insert("Notes".into(), JValue::String(val.into()));
-        self
-    }
-
-    fn tls_skip_verify(&self) -> Option<&str> {
-        self._jv().get("TLSSkipVerify").and_then(|x| x.as_str())
-    }
-
-    fn set_tls_skip_verify<S: Into<String>>(&mut self, val: S) -> &mut Self {
-        self._jv_mut().as_object_mut().unwrap().insert("TLSSkipVerify".into(), JValue::String(val.into()));
-        self
-    }
-
-    fn deregister_critical_service_after(&self) -> Option<&str> {
-        self._jv().get("DeregisterCriticalServiceAfter").and_then(|x| x.as_str())
-    }
-
-    fn set_deregister_critical_service_after<S: Into<String>>(&mut self, val: S) -> &mut Self {
-        self._jv_mut().as_object_mut().unwrap().insert("DeregisterCriticalServiceAfter".into(), JValue::String(val.into()));
-        self
-    }
-}
-
-#[derive (Clone, Debug)]
-pub struct AgentCheck(JValue);
-
-#[derive (Clone, Debug)]
-pub struct AgentCheckRegistration(JValue);
-
-impl HasJValue for AgentCheck {
-    fn _jv(&self) -> &JValue { &self.0 }
-    fn _jv_mut(&mut self) -> &mut JValue { &mut self.0 }
-}
-
-impl AgentCheckTrait for AgentCheck {}
-
-impl HasJValue for AgentCheckRegistration {
-    fn _jv(&self) -> &JValue { &self.0 }
-    fn _jv_mut(&mut self) -> &mut JValue { &mut self.0 }
-}
-
-impl AgentCheckRegistrationTrait for AgentCheckRegistration {}
-impl AgentServiceCheckTrait for AgentCheckRegistration {}
-
-impl AgentCheckRegistration {
-    pub fn new(name: &str) -> Self {
-        let mut s = AgentCheckRegistration(JValue::Object(JMap::new()));
-        s.set_name(name);
-        s
-    }
-}
-
-#[derive (Clone, Debug)]
-pub struct AgentService(JValue);
-
-#[derive (Clone, Debug)]
-pub struct AgentServiceCheck(JValue);
-
-#[derive (Clone, Debug)]
-pub struct AgentServiceRegistration(JValue);
-
-impl HasJValue for AgentService {
-    fn _jv(&self) -> &JValue { &self.0 }
-    fn _jv_mut(&mut self) -> &mut JValue { &mut self.0 }
-}
-
-impl AgentServiceTrait for AgentService {}
-
-impl HasJValue for AgentServiceCheck {
-    fn _jv(&self) -> &JValue { &self.0 }
-    fn _jv_mut(&mut self) -> &mut JValue { &mut self.0 }
-}
-
-impl AgentServiceCheckTrait for AgentServiceCheck {}
-
-impl HasJValue for AgentServiceRegistration {
-    fn _jv(&self) -> &JValue { &self.0 }
-    fn _jv_mut(&mut self) -> &mut JValue { &mut self.0 }
-}
-
-impl AgentServiceRegistrationTrait for AgentServiceRegistration {}
 
 impl<'a> Agent<'a> {
     pub fn new(consul: &'a Consul) -> Self {
@@ -339,15 +133,18 @@ impl<'a> Agent<'a> {
                 res.read_to_string(&mut buf).expect("Cannot fill the buffer");
 
                 let v: JValue = serde_json::from_str(&buf).expect("Cannot parse JSON");
-                Ok(v.as_object().unwrap().iter().map(|(k, v)| (k.clone(),AgentCheck(v.clone()))).collect::<HashMap<_, _>>())
+                Ok(
+                    v.as_object().unwrap().iter().map(|(k, v)| (k.clone(), serde_json::from_value(v.clone()).unwrap()))
+                        .collect::<HashMap<_, _>>()
+                )
             },
             _ => Err(consul_error(res)),
         }
     }
 
-    pub fn register_check(&self, check: AgentCheckRegistration) -> ::Result<()> {
+    pub fn register_check(&self, check: &AgentCheckRegistration) -> ::Result<()> {
         let res = self.consul._request1(Put, "agent/checks/register")
-            .body(check.0.as_str().unwrap())
+            .body(&serde_json::to_string(check).unwrap())
             .header(ContentType::json())
             .send()?;
         match res.status {
@@ -395,15 +192,18 @@ impl<'a> Agent<'a> {
                 res.read_to_string(&mut buf).expect("Cannot fill the buffer");
 
                 let v: JValue = serde_json::from_str(&buf).expect("Cannot parse JSON");
-                Ok(v.as_object().unwrap().iter().map(|(k, v)| (k.clone(),AgentService(v.clone()))).collect::<HashMap<_, _>>())
+                Ok(
+                    v.as_object().unwrap().iter().map(|(k, v)| (k.clone(), serde_json::from_value(v.clone()).unwrap()))
+                        .collect::<HashMap<_, _>>()
+                )
             },
             _ => Err(consul_error(res)),
         }
     }
 
-    pub fn register_service(&self, service: AgentServiceRegistration) -> ::Result<()> {
+    pub fn register_service(&self, service: &AgentServiceRegistration) -> ::Result<()> {
         let res = self.consul._request1(Put, "agent/service/register")
-            .body(service.0.as_str().unwrap())
+            .body(&serde_json::to_string(service).unwrap())
             .header(ContentType::json())
             .send()?;
         match res.status {

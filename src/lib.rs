@@ -8,7 +8,7 @@ pub mod agent;
 pub mod keyvalue;
 pub mod error;
 
-pub use agent::Agent;
+pub use agent::{Agent, AgentCheck, AgentCheckRegistration, AgentService, AgentServiceRegistration};
 pub use keyvalue::KeyValue;
 
 pub use error::Result;
