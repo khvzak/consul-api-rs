@@ -5,8 +5,7 @@ use hyper::method::Method::{Get, Put, Delete};
 use base64;
 use serde;
 use serde::de::{Deserialize, Deserializer};
-use serde_json;
-use serde_json::Value as JValue;
+use serde_json::{self, Value as JValue};
 
 use Consul;
 use error::consul_error;

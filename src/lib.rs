@@ -39,7 +39,7 @@ impl Consul {
         KeyValue::new(self)
     }
 
-    pub fn _request(&self, method: Method, srv: &str) -> RequestBuilder {
+    pub fn _request1(&self, method: Method, srv: &str) -> RequestBuilder {
         self._request3(method, srv, (None as Option<&str>).into_iter(), |_| ())
     }
 
