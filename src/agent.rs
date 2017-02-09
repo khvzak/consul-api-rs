@@ -267,7 +267,10 @@ pub trait AgentServiceCheckTrait : HasJValue {
     }
 }
 
+#[derive (Clone, Debug)]
 pub struct AgentCheck(JValue);
+
+#[derive (Clone, Debug)]
 pub struct AgentCheckRegistration(JValue);
 
 impl HasJValue for AgentCheck {
@@ -293,8 +296,13 @@ impl AgentCheckRegistration {
     }
 }
 
+#[derive (Clone, Debug)]
 pub struct AgentService(JValue);
+
+#[derive (Clone, Debug)]
 pub struct AgentServiceCheck(JValue);
+
+#[derive (Clone, Debug)]
 pub struct AgentServiceRegistration(JValue);
 
 impl HasJValue for AgentService {
