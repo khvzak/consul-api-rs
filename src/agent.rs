@@ -2,7 +2,8 @@ use hyper;
 use hyper::method::Method::{Get, Put};
 use hyper::header::ContentType;
 
-use serde_json::{self, Value as JValue};
+use serde_json;
+use ::JValue;
 
 use Consul;
 use error::consul_error;

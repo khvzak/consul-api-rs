@@ -17,6 +17,8 @@ use hyper::Url;
 use hyper::client::RequestBuilder;
 use hyper::method::Method;
 
+pub use serde_json::Value as JValue;
+
 pub struct Consul {
     address: String,
     client: hyper::Client,
