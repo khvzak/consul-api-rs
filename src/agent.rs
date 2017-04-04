@@ -55,7 +55,7 @@ pub struct AgentCheckRegistration {
     #[serde(rename = "ID", skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     #[serde(rename = "Name")]
-    pub name: Option<String>,
+    pub name: String,
     #[serde(rename = "ServiceID", skip_serializing_if = "Option::is_none")]
     pub service_id: Option<String>,
 
@@ -144,7 +144,7 @@ impl<'a> Agent<'a> {
     }
 
     pub fn register_check(&self, check: &AgentCheckRegistration) -> ::Result<()> {
-        let res = self.consul._request1(Put, "agent/checks/register")
+        let res = self.consul._request1(Put, "agent/check/register")
             .body(&serde_json::to_string(check).unwrap())
             .header(ContentType::json())
             .send()?;
@@ -323,5 +323,62 @@ impl<'a> Agent<'a> {
             hyper::Ok => Ok(()),
             _ => Err(consul_error(res)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ::{Consul, AgentCheckRegistration, AgentServiceRegistration};
+
+    #[test]
+    fn checks() {
+        let consul = Consul::default();
+
+        assert!(consul.agent().register_check(&AgentCheckRegistration {
+            name: "test_check".into(),
+            ttl: Some("15s".into()),
+            status: Some("critical".into()),
+            .. Default::default()
+        }).is_ok());
+        assert!(consul.agent().checks().unwrap().contains_key("test_check"));
+
+        assert!(consul.agent().pass_check("test_check", None).is_ok());
+        assert!(consul.agent().checks().unwrap()["test_check"].status.as_str() == "passing");
+
+        assert!(consul.agent().warn_check("test_check", None).is_ok());
+        assert!(consul.agent().checks().unwrap()["test_check"].status.as_str() == "warning");
+
+        assert!(consul.agent().fail_check("test_check", None).is_ok());
+        assert!(consul.agent().checks().unwrap()["test_check"].status.as_str() == "critical");
+
+        assert!(consul.agent().deregister_check("test_check").is_ok());
+        assert!(consul.agent().checks().unwrap().contains_key("test_check") == false);
+    }
+
+    #[test]
+    fn services() {
+        let consul = Consul::default();
+
+        assert!(consul.agent().register_service(&AgentServiceRegistration {
+            name: "test_service".into(),
+            tags: Some(vec!["testsrv".into()]),
+            .. Default::default()
+        }).is_ok());
+
+        let services = consul.agent().services().ok().unwrap();
+        assert!(services.contains_key("test_service"));
+        assert!(services["test_service"].tags == vec!["testsrv".to_string()]);
+
+        assert!(consul.agent().deregister_service("test_service").is_ok());
+        assert!(consul.agent().services().ok().unwrap().contains_key("test_service") == false);
+    }
+
+    #[test]
+    fn _self() {
+        let consul = Consul::default();
+
+        let conf = consul.agent().self_j();
+        assert!(conf.is_ok());
+        assert!(conf.unwrap().as_object().unwrap().contains_key("Config"));
     }
 }
